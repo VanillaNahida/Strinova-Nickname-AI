@@ -1,18 +1,18 @@
 <p align="center">
-  <img src="public/favicon.ico" alt="title" width="200">
+  <img src="calabiyauify-names-ai/public/favicon.ico" alt="title" width="200">
     
 <h1 align="center">卡拉彼丘程度计算器AI 版</h1>
 
 
 一个超级可爱的卡拉彼丘（Calabiyau）程度计算器！通过输入昵称，计算你有多像卡丘猫娘喵~ ✨
 
-## 🌍 在线体验喵：<img align="right" src="public/aika3.png"  width="64">
+## 🌍 在线体验喵：<img align="right" src="calabiyauify-names-ai/public/aika3.png"  width="64">
 
 
 [https://fun.xcnahida.cn/calabiyauify-names-ai](https://fun.xcnahida.cn/calabiyauify-names-ai)
 
 
-## 🌟 功能特性 <img align="right" src="public/title.png"  width="64">
+## 🌟 功能特性 <img align="right" src="calabiyauify-names-ai/public/title.png"  width="64">
 
 - **智能计算**：基于大模型，精准计算你的卡丘程度
 - **关键词检测**：包含卡丘文化关键词直接100%喵！
@@ -24,14 +24,14 @@
   - 动态评论和角色图片展示
 - **喵言喵语**：内置大量经典喵语数据，可复制喵言喵语发在卡丘公屏上喵~
 
-## 🛠️ 技术栈 <img align="right" src="public/xnm1.png"  width="64">
+## 🛠️ 技术栈 <img align="right" src="calabiyauify-names-ai/public/xnm1.png"  width="64">
 
 - **前端框架**：Vue 3 
 - **后端框架**：FastAPI
 - **构建工具**：Vite
 - **样式**：Tailwind CSS + PostCSS
 
-## 🚀 本地部署 <img align="right" src="public/mi1.png"  width="64">
+## 🚀 本地部署 <img align="right" src="calabiyauify-names-ai/public/mi1.png"  width="64">
 
 ### 安装依赖
 
@@ -57,7 +57,7 @@ npm run build
 npm run preview
 ```
 
-## 📖 使用说明 <img align="right" src="public/mi3.png"  width="64">
+## 📖 使用说明 <img align="right" src="calabiyauify-names-ai/public/mi3.png"  width="64">
 
 1. 打开应用，输入你的昵称
 2. 点击"计算卡拉彼丘程度"按钮
@@ -65,14 +65,14 @@ npm run preview
 4. 享受可爱的喵喵互动效果！
 
 
-## 🎨 界面特色 <img align="right" src="public/aika4.png"  width="64">
+## 🎨 界面特色 <img align="right" src="calabiyauify-names-ai/public/aika4.png"  width="64">
 
 - **响应式设计**：适配各种设备
 - **暗色模式**：自动检测系统偏好，支持手动切换
 - **动画效果**：平滑过渡和可爱动画
 - **音效支持**：点击音效和背景音乐
 
-## 📁 项目结构 <img align="right" src="public/aika5.png"  width="64">
+## 📁 项目结构 <img align="right" src="calabiyauify-names-ai/public/aika5.png"  width="64">
 
 ```
 Strinova-nickname/
@@ -91,7 +91,7 @@ Strinova-nickname/
     ├── .github/
     │   └── workflows/
     │       └── build.yml # CI/CD配置
-    ├── public/            # 静态资源
+    ├── calabiyauify-names-ai/public/            # 静态资源
     │   ├── *.png         # 角色图片
     │   ├── *.mp3         # 音效文件
     │   └── favicon.ico   # 网站图标
@@ -113,16 +113,16 @@ Strinova-nickname/
     └── LICENSE.md        # 许可证文件
 ```
 
-## 🤝 贡献 <img align="right" src="public/mi5.png"  width="64">
+## 🤝 贡献 <img align="right" src="calabiyauify-names-ai/public/mi5.png"  width="64">
 
 欢迎提交Issue和Pull Request！
 
-## 📄 许可证 <img align="right" src="public/mi4.png"  width="64">
+## 📄 许可证 <img align="right" src="calabiyauify-names-ai/public/mi4.png"  width="64">
 
 
 本项目采用 GNU GPL-3.0 许可证开源
 
-## 🙏 致谢 <img align="right" src="public/xnm2.png"  width="64">
+## 🙏 致谢 <img align="right" src="calabiyauify-names-ai/public/xnm2.png"  width="64">
 
 - 感谢所有卡丘粉丝的支持喵~
 - 感谢[@Coconut-Aero](https://github.com/Coconut-Aero/calabiyauify-names)的项目！没有它，我就不会有这个项目喵~
