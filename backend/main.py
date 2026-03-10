@@ -43,14 +43,6 @@ class IPAccess:
 
 ip_accesses: Dict[str, IPAccess] = {}
 
-# 违禁词库
-badwords: List[str] = []
-if config['security']['badwords']['enabled']:
-    badwords_file = config['security']['badwords']['file_path']
-    if os.path.exists(badwords_file):
-        with open(badwords_file, 'r', encoding='utf-8') as f:
-            badwords = [line.strip() for line in f if line.strip()]
-
 # 输入请求模型
 class ChatRequest(BaseModel):
     user_nickname: str
@@ -109,6 +101,13 @@ async def check_badwords(message: str) -> bool:
     if not config['security']['badwords']['enabled']:
         return True
     
+    badwords_file = config['security']['badwords']['file_path']
+    if not os.path.exists(badwords_file):
+        return True
+    
+    with open(badwords_file, 'r', encoding='utf-8') as f:
+        badwords = [line.strip() for line in f if line.strip()]
+    
     for word in badwords:
         if word in message:
             return False
@@ -151,7 +150,7 @@ async def shutdown_event():
     await save_ip_accesses()
 
 # 处理聊天请求
-@app.post("/api/get_nickname_response", response_model=ChatResponse)
+@app.post("/", response_model=ChatResponse)
 async def chat(request: Request, chat_request: ChatRequest):
     # 获取客户端IP
     client_ip = request.client.host
@@ -221,7 +220,7 @@ async def chat(request: Request, chat_request: ChatRequest):
 # 根路径
 @app.get("/")
 async def root():
-    return {"message": "Backend is running"}
+    return {"message":"Server is running.  卡拉彼丘计算服务正在运行喵！"}
 
 if __name__ == "__main__":
     import uvicorn

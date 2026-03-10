@@ -38,7 +38,7 @@ async function calculate(){
         isLoading.value = true;
 
         // 发送请求到后端
-        const response = await fetch('http://localhost:8000/api/get_nickname_response', {
+        const response = await fetch('https://calabiyau.xcnahida.cn/api/get_nickname_response', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
