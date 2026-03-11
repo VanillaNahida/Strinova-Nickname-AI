@@ -69,3 +69,6 @@ security:
 # 日志配置
 logging:
   level: "info"
+  file: "data/logs/server.log"
+  max_size: 10  # 最大文件大小（MB）
+  backup_count: 5  # 备份文件数量

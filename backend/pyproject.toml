@@ -1,7 +1,7 @@
 [project]
-name = "backend"
+name = "Calabiyauify-names-AI"
 version = "0.1.0"
-description = "Add your description here"
+description = "Calabiyauify-names-AI is a FastAPI application that provides a RESTful API for generating Calabiyauified versions of names using OpenAI's GPT-3.5-turbo model."
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
@@ -11,4 +11,5 @@ dependencies = [
     "pydantic-settings>=2.13.1",
     "pyyaml>=6.0.3",
     "uvicorn[standard]>=0.41.0",
+    "colorlog>=6.8.2",
 ]

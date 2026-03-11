@@ -1,21 +1,113 @@
-import asyncio
 import csv
-import datetime
 import os
-from typing import Dict, List, Optional
-
+import json
 import yaml
-from fastapi import FastAPI, Request, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
+import asyncio
+import datetime
+import logging
+import logging.handlers
+import colorlog
+from typing import Dict, List, Optional
 from openai import AsyncOpenAI
 from pydantic import BaseModel
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
+
+# 配置文件路径
+config_file = 'data/config.yaml'
 
 # 读取配置
-with open('data/config.yaml', 'r', encoding='utf-8') as f:
+with open(config_file, 'r', encoding='utf-8') as f:
     config = yaml.safe_load(f)
 
+# 配置文件修改时间
+config_mtime = os.path.getmtime(config_file)
+
+# 初始化日志系统
+def setup_logging():
+    # 获取日志配置
+    log_config = config['logging']
+    log_level = getattr(logging, log_config['level'].upper())
+    log_file = log_config['file']
+    max_size = log_config['max_size'] * 1024 * 1024  # 转换为字节
+    backup_count = log_config['backup_count']
+    
+    # 创建日志目录
+    log_dir = os.path.dirname(log_file)
+    if log_dir and not os.path.exists(log_dir):
+        os.makedirs(log_dir)
+    
+    logger = logging.getLogger()
+    logger.setLevel(log_level)
+    
+    # 清除现有处理器
+    for handler in logger.handlers[:]:
+        logger.removeHandler(handler)
+    
+    # --- 1. 文本文件处理器 (保持简洁，无颜色码) ---
+    file_handler = logging.handlers.RotatingFileHandler(
+        log_file,
+        maxBytes=max_size,
+        backupCount=backup_count,
+        encoding='utf-8'
+    )
+    file_formatter = logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
+    file_handler.setFormatter(file_formatter)
+    
+    # --- 2. 彩色控制台处理器 ---
+    console_handler = logging.StreamHandler()
+    
+    # 定义颜色方案
+    color_formatter = colorlog.ColoredFormatter(
+        "%(log_color)s%(asctime)s - %(levelname)-8s%(reset)s %(white)s%(message)s",
+        datefmt='%Y-%m-%d %H:%M:%S',
+        reset=True,
+        log_colors={
+            'DEBUG':    'cyan',
+            'INFO':     'green',
+            'WARNING':  'yellow',
+            'ERROR':    'red',
+            'CRITICAL': 'red,bg_white',
+        },
+        secondary_log_colors={},
+        style='%'
+    )
+    console_handler.setFormatter(color_formatter)
+    
+    # 添加处理器
+    logger.addHandler(file_handler)
+    logger.addHandler(console_handler)
+    
+    return logger
+
+# 初始化日志
+logger = setup_logging()
+
+# 定义 lifespan 事件处理器
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # 启动时执行初始化加载IP访问记录
+    await load_ip_accesses()
+    logger.info("服务启动完成")
+    
+    try:
+        yield
+    finally:
+        # 关闭时执行保存IP访问记录（添加超时保护）
+        try:
+            await asyncio.wait_for(save_ip_accesses(), timeout=3.0)
+            logger.info("服务关闭完成")
+        except asyncio.TimeoutError:
+            logger.warning("保存IP访问记录超时，跳过保存")
+        except Exception as e:
+            logger.error(f"保存IP访问记录失败: {str(e)}")
+
+
 # 初始化FastAPI应用
-app = FastAPI()
+app = FastAPI(lifespan=lifespan)
 
 # 配置CORS
 app.add_middleware(
@@ -31,6 +123,33 @@ client = AsyncOpenAI(
     api_key=config['model']['api_key'],
     base_url=config['model']['base_url']
 )
+
+# 检查并重载配置
+async def check_config_reload():
+    global config, config_mtime, client, logger
+    
+    try:
+        current_mtime = os.path.getmtime(config_file)
+        if current_mtime > config_mtime:
+            # 配置文件已修改，重新加载
+            with open(config_file, 'r', encoding='utf-8') as f:
+                new_config = yaml.safe_load(f)
+            
+            # 更新配置
+            config = new_config
+            config_mtime = current_mtime
+            
+            # 更新OpenAI客户端
+            client = AsyncOpenAI(
+                api_key=config['model']['api_key'],
+                base_url=config['model']['base_url']
+            )
+            
+            # 重新配置日志
+            logger = setup_logging()
+            logger.info(f"配置文件已重载: {datetime.datetime.now()}")
+    except Exception as e:
+        logger.error(f"重载配置失败: {str(e)}")
 
 # IP访问记录
 class IPAccess:
@@ -139,37 +258,39 @@ async def load_ip_accesses():
                 access.count = int(row['次数'])
                 ip_accesses[row['IP']] = access
 
-# 初始化加载IP访问记录
-@app.on_event("startup")
-async def startup_event():
-    await load_ip_accesses()
-
-# 关闭时保存IP访问记录
-@app.on_event("shutdown")
-async def shutdown_event():
-    await save_ip_accesses()
-
 # 处理聊天请求
 @app.post("/", response_model=ChatResponse)
 async def chat(request: Request, chat_request: ChatRequest):
+    # 检查配置是否需要重载
+    await check_config_reload()
+    
     # 获取客户端IP
     client_ip = request.client.host
+    nickname = chat_request.user_nickname
+    
+    logger.info(f"收到请求 - IP: {client_ip}, 昵称: {nickname}")
     
     # 检查IP是否被阻塞
     if await check_ip_blocked(client_ip):
-        raise HTTPException(status_code=429, detail="请求过快，请10分钟后再试")
+        block_time = config['security']['ip_limit']['block_time']
+        logger.warning(f"IP被阻塞 - IP: {client_ip}, 昵称: {nickname}, 阻塞时间: {block_time}分钟")
+        raise HTTPException(status_code=429, detail=f"请求过快，请{block_time}分钟后再试喵")
     
     # 检查IP访问次数
     if not await check_ip_limit(client_ip):
-        raise HTTPException(status_code=429, detail="请求过快，请10分钟后再试")
+        block_time = config['security']['ip_limit']['block_time']
+        logger.warning(f"IP访问超限 - IP: {client_ip}, 昵称: {nickname}, 阻塞时间: {block_time}分钟")
+        raise HTTPException(status_code=429, detail=f"请求过快，请{block_time}分钟后再试喵")
     
     # 检查输入长度
-    if not await check_input_length(chat_request.user_nickname):
+    if not await check_input_length(nickname):
+        logger.warning(f"输入长度超限 - IP: {client_ip}, 昵称: {nickname}, 长度: {len(nickname)}")
         raise HTTPException(status_code=400, detail=f"输入长度超过限制，最大{config['security']['input_limit']['max_chars']}字符")
     
     # 检查违禁词
-    if not await check_badwords(chat_request.user_nickname):
-        raise HTTPException(status_code=400, detail="输入包含违禁词，拒绝处理")
+    if not await check_badwords(nickname):
+        logger.warning(f"包含违禁词 - IP: {client_ip}, 昵称: {nickname}")
+        raise HTTPException(status_code=400, detail="输入包含违禁词，拒绝处理喵")
     
     # 更新IP访问记录
     if client_ip not in ip_accesses:
@@ -182,8 +303,9 @@ async def chat(request: Request, chat_request: ChatRequest):
     # 保存IP访问记录
     await save_ip_accesses()
     
+    logger.info(f"开始处理请求 - IP: {client_ip}, 昵称: {nickname}")
+    
     # 替换昵称占位符
-    nickname = chat_request.user_nickname
     system_prompt = config['model']['system_prompt']
     user_prompt = config['model']['user_prompt'].replace("{{nickname}}", nickname)
     
@@ -201,7 +323,6 @@ async def chat(request: Request, chat_request: ChatRequest):
         assistant_response = response.choices[0].message.content
         
         # 解析JSON响应
-        import json
         try:
             # 提取JSON部分
             if '```json' in assistant_response:
@@ -211,15 +332,22 @@ async def chat(request: Request, chat_request: ChatRequest):
             
             # 解析JSON
             parsed_response = json.loads(json_str.strip())
+            
+            logger.info(f"请求处理成功 - IP: {client_ip}, 昵称: {nickname}, 相似度: {parsed_response.get('Strinova-similarity', 'N/A')}, AI锐评: {parsed_response.get('reason', 'N/A')}")
+            
             return ChatResponse(response=parsed_response)
         except json.JSONDecodeError as e:
+            logger.error(f"AI返回格式错误 - IP: {client_ip}, 昵称: {nickname}, 错误: {str(e)}")
             raise HTTPException(status_code=500, detail=f"AI返回格式错误: {str(e)}")
     except Exception as e:
+        logger.error(f"API调用失败 - IP: {client_ip}, 昵称: {nickname}, 错误: {str(e)}")
         raise HTTPException(status_code=500, detail=f"API调用失败: {str(e)}")
 
 # 根路径
 @app.get("/")
 async def root():
+    # 检查配置是否需要重载
+    await check_config_reload()
     return {"message":"Server is running.  卡拉彼丘计算服务正在运行喵！"}
 
 if __name__ == "__main__":
@@ -228,5 +356,5 @@ if __name__ == "__main__":
         "main:app",
         host=config['server']['host'],
         port=config['server']['port'],
-        reload=True
+        reload=False
     )
