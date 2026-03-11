@@ -1,7 +1,7 @@
 <p align="center">
   <img src="calabiyauify-names-ai/public/favicon.ico" alt="title" width="200">
     
-<h1 align="center">卡拉彼丘程度计算器AI 版</h1>
+<h1 align="center">卡拉彼丘程度计算器 AI 版</h1>
 
 
 一个超级可爱的卡拉彼丘（Calabiyau）程度计算器！通过输入昵称，计算你有多像卡丘猫娘喵~ ✨
@@ -9,7 +9,7 @@
 ## 🌍 在线体验喵：<img align="right" src="calabiyauify-names-ai/public/aika3.png"  width="64">
 
 
-[https://fun.xcnahida.cn/calabiyauify-names-ai](https://fun.xcnahida.cn/calabiyauify-names-ai)
+[https://calabiyau.xcnahida.cn/](https://calabiyau.xcnahida.cn/)
 
 
 ## 🌟 功能特性 <img align="right" src="calabiyauify-names-ai/public/title.png"  width="64">
