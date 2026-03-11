@@ -170,6 +170,24 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     response: dict
 
+# 获取真实客户端IP
+def get_real_ip(request: Request) -> str:
+    """
+    从请求头中获取真实客户端IP
+    优先从 X-Forwarded-For 获取，如果没有则使用 request.client.host
+    """
+    # 从 X-Forwarded-For 头获取IP
+    x_forwarded_for = request.headers.get('X-Forwarded-For')
+    if x_forwarded_for:
+        # X-Forwarded-For 格式: "client_ip, proxy1_ip, proxy2_ip, ..."
+        # 取第一个IP（最原始的客户端IP）
+        real_ip = x_forwarded_for.split(',')[0].strip()
+        if real_ip:
+            return real_ip
+    
+    # 如果没有 X-Forwarded-For，使用默认的客户端IP
+    return request.client.host
+
 # 检查IP是否被阻塞
 async def check_ip_blocked(ip: str) -> bool:
     access = ip_accesses.get(ip)
@@ -199,6 +217,7 @@ async def check_ip_limit(ip: str) -> bool:
     if time_diff > time_window:
         access.count = 1
         access.last_access = now
+        logger.info(f"IP计数重置 - IP: {ip}, 时间窗口: {time_window}秒")
         return True
     
     # 检查是否超过限制
@@ -206,6 +225,7 @@ async def check_ip_limit(ip: str) -> bool:
         # 阻塞IP
         block_time = config['security']['ip_limit']['block_time']
         access.blocked_until = now + datetime.timedelta(minutes=block_time)
+        logger.warning(f"IP访问超限被阻塞 - IP: {ip}, 当前计数: {access.count}, 阻塞时间: {block_time}分钟")
         return False
     
     return True
@@ -264,17 +284,27 @@ async def chat(request: Request, chat_request: ChatRequest):
     # 检查配置是否需要重载
     await check_config_reload()
     
-    # 获取客户端IP
-    client_ip = request.client.host
+    # 获取客户端真实IP
+    client_ip = get_real_ip(request)
     nickname = chat_request.user_nickname
     
-    logger.info(f"收到请求 - IP: {client_ip}, 昵称: {nickname}")
+    logger.info(f"收到请求 - 真实IP: {client_ip}, CDN IP: {request.client.host}, 昵称: {nickname}")
     
     # 检查IP是否被阻塞
     if await check_ip_blocked(client_ip):
         block_time = config['security']['ip_limit']['block_time']
         logger.warning(f"IP被阻塞 - IP: {client_ip}, 昵称: {nickname}, 阻塞时间: {block_time}分钟")
         raise HTTPException(status_code=429, detail=f"请求过快，请{block_time}分钟后再试喵")
+    
+    # 更新IP访问记录（在检查之前更新）
+    if client_ip not in ip_accesses:
+        ip_accesses[client_ip] = IPAccess(client_ip)
+        logger.info(f"新IP首次访问 - IP: {client_ip}, 昵称: {nickname}")
+    else:
+        access = ip_accesses[client_ip]
+        access.last_access = datetime.datetime.now()
+        access.count += 1
+        logger.info(f"IP访问计数更新 - IP: {client_ip}, 昵称: {nickname}, 当前计数: {access.count}")
     
     # 检查IP访问次数
     if not await check_ip_limit(client_ip):
@@ -291,14 +321,6 @@ async def chat(request: Request, chat_request: ChatRequest):
     if not await check_badwords(nickname):
         logger.warning(f"包含违禁词 - IP: {client_ip}, 昵称: {nickname}")
         raise HTTPException(status_code=400, detail="输入包含违禁词，拒绝处理喵")
-    
-    # 更新IP访问记录
-    if client_ip not in ip_accesses:
-        ip_accesses[client_ip] = IPAccess(client_ip)
-    else:
-        access = ip_accesses[client_ip]
-        access.last_access = datetime.datetime.now()
-        access.count += 1
     
     # 保存IP访问记录
     await save_ip_accesses()
