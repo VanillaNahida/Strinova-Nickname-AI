@@ -293,19 +293,19 @@ async function calculate(){
           <footer class="mt-12 sm:mt-16 text-xs text-gray-400 dark:text-gray-500 transition-opacity duration-500 hover:opacity-80 text-center p-4">
         Made With ❤  | 由 
         <a
-          href="https://github.com/Coconut-Aero"
+          href="https://github.com/VanillaNahida"
           target="_blank"
           rel="noopener noreferrer"
           class="font-medium text-indigo-600 dark:text-indigo-400 underline hover:opacity-90"
         >
-          Coconut-Aero And VanillaNahida
+          @VanillaNahida
         </a>
         构建 ｜  <a
-          href="https://github.com/Coconut-Aero/calabiyauify-names"
+          href="https://github.com/VanillaNahida/Strinova-Nickname-AI"
           target="_blank"
           rel="noopener noreferrer"
           class="font-medium text-indigo-600 dark:text-indigo-400 underline hover:opacity-90"
-        > 项目地址（参考项目） </a>
+        > 项目地址： </a>
         <br />
         
 

@@ -79,7 +79,7 @@ Strinova-nickname/
 ├── backend/               # 后端服务
 │   ├── data/             # 数据文件
 │   │   ├── config.yaml   # 配置文件（git忽略）
-│   │   ├── config.example.yaml # 配置示例文件
+│   │   ├── config.example.yaml # 配置示例文件（包含AI提示词）
 │   │   ├── badwords.txt  # 违禁词列表
 │   │   └── ip_accesses.csv # IP访问记录
 │   ├── main.py           # FastAPI主程序

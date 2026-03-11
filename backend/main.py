@@ -89,21 +89,21 @@ logger = setup_logging()
 # 定义 lifespan 事件处理器
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 启动时执行初始化加载IP访问记录
-    await load_ip_accesses()
+    # 启动时执行初始化加载IP统计记录
+    await load_ip_stats()
     logger.info("服务启动完成")
     
     try:
         yield
     finally:
-        # 关闭时执行保存IP访问记录（添加超时保护）
+        # 关闭时执行保存IP统计记录（添加超时保护）
         try:
-            await asyncio.wait_for(save_ip_accesses(), timeout=3.0)
+            await asyncio.wait_for(save_ip_stats(), timeout=3.0)
             logger.info("服务关闭完成")
         except asyncio.TimeoutError:
-            logger.warning("保存IP访问记录超时，跳过保存")
+            logger.warning("保存IP统计记录超时，跳过保存")
         except Exception as e:
-            logger.error(f"保存IP访问记录失败: {str(e)}")
+            logger.error(f"保存IP统计记录失败: {str(e)}")
 
 
 # 初始化FastAPI应用
@@ -151,16 +151,29 @@ async def check_config_reload():
     except Exception as e:
         logger.error(f"重载配置失败: {str(e)}")
 
-# IP访问记录
+# IP访问记录类（内存中的实时计数）
 class IPAccess:
     def __init__(self, ip: str):
         self.ip = ip
-        self.first_access = datetime.datetime.now()
-        self.last_access = self.first_access
-        self.count = 1
-        self.blocked_until = None
+        self.first_access = datetime.datetime.now()  # 首次访问时间
+        self.window_start = datetime.datetime.now()  # 当前时间窗口开始时间
+        self.window_count = 1  # 当前时间窗口内的请求次数
+        self.total_count = 1  # 累计总请求次数
+        self.blocked_until = None  # 阻塞结束时间
 
+# 内存中的实时IP访问记录
 ip_accesses: Dict[str, IPAccess] = {}
+
+# 累计统计记录（用于持久化存储）
+class IPStats:
+    def __init__(self, ip: str, first_access: datetime.datetime, total_count: int):
+        self.ip = ip
+        self.first_access = first_access
+        self.total_count = total_count
+        self.last_access = datetime.datetime.now()
+
+# 累计统计记录
+ip_stats: Dict[str, IPStats] = {}
 
 # 输入请求模型
 class ChatRequest(BaseModel):
@@ -199,7 +212,7 @@ async def check_ip_blocked(ip: str) -> bool:
             access.blocked_until = None
     return False
 
-# 检查IP访问次数
+# 检查IP访问次数（基于时间窗口内的实时计数）
 async def check_ip_limit(ip: str) -> bool:
     if not config['security']['ip_limit']['enabled']:
         return True
@@ -208,24 +221,24 @@ async def check_ip_limit(ip: str) -> bool:
     if not access:
         return True
     
-    # 检查是否在时间窗口内
+    # 检查时间窗口是否过期
     time_window = config['security']['ip_limit']['time_window']
     now = datetime.datetime.now()
-    time_diff = (now - access.last_access).total_seconds()
+    time_diff = (now - access.window_start).total_seconds()
     
-    # 如果超过时间窗口，重置计数
+    # 如果超过时间窗口，重置窗口计数
     if time_diff > time_window:
-        access.count = 1
-        access.last_access = now
-        logger.info(f"IP计数重置 - IP: {ip}, 时间窗口: {time_window}秒")
-        return True
+        access.window_start = now
+        access.window_count = 0
+        logger.info(f"IP时间窗口重置 - IP: {ip}, 时间窗口: {time_window}秒")
     
     # 检查是否超过限制
-    if access.count >= config['security']['ip_limit']['max_requests']:
+    max_requests = config['security']['ip_limit']['max_requests']
+    if access.window_count >= max_requests:
         # 阻塞IP
         block_time = config['security']['ip_limit']['block_time']
         access.blocked_until = now + datetime.timedelta(minutes=block_time)
-        logger.warning(f"IP访问超限被阻塞 - IP: {ip}, 当前计数: {access.count}, 阻塞时间: {block_time}分钟")
+        logger.warning(f"IP访问超限被阻塞 - IP: {ip}, 窗口计数: {access.window_count}, 累计计数: {access.total_count}, 阻塞时间: {block_time}分钟")
         return False
     
     return True
@@ -252,31 +265,36 @@ async def check_badwords(message: str) -> bool:
             return False
     return True
 
-# 保存IP访问记录到CSV
-async def save_ip_accesses():
+# 保存IP累计统计记录到CSV
+async def save_ip_stats():
     with open('data/ip_accesses.csv', 'w', newline='', encoding='utf-8') as f:
         writer = csv.writer(f)
         writer.writerow(['IP', '首次访问日期', '最后访问日期', '次数'])
-        for access in ip_accesses.values():
+        for ip, access in ip_accesses.items():
             writer.writerow([
-                access.ip,
+                ip,
                 access.first_access.strftime('%Y-%m-%d %H:%M:%S'),
-                access.last_access.strftime('%Y-%m-%d %H:%M:%S'),
-                access.count
+                datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                access.total_count
             ])
 
-# 加载IP访问记录
-async def load_ip_accesses():
+# 加载IP累计统计记录
+async def load_ip_stats():
     global ip_accesses
     if os.path.exists('data/ip_accesses.csv'):
         with open('data/ip_accesses.csv', 'r', encoding='utf-8') as f:
             reader = csv.DictReader(f)
             for row in reader:
-                access = IPAccess(row['IP'])
-                access.first_access = datetime.datetime.strptime(row['首次访问日期'], '%Y-%m-%d %H:%M:%S')
-                access.last_access = datetime.datetime.strptime(row['最后访问日期'], '%Y-%m-%d %H:%M:%S')
-                access.count = int(row['次数'])
-                ip_accesses[row['IP']] = access
+                ip = row['IP']
+                first_access = datetime.datetime.strptime(row['首次访问日期'], '%Y-%m-%d %H:%M:%S')
+                total_count = int(row['次数'])
+                
+                # 创建新的IP访问记录，重置窗口计数
+                access = IPAccess(ip)
+                access.first_access = first_access
+                access.total_count = total_count
+                access.window_count = 0  # 窗口计数从0开始
+                ip_accesses[ip] = access
 
 # 处理聊天请求
 @app.post("/", response_model=ChatResponse)
@@ -302,14 +320,14 @@ async def chat(request: Request, chat_request: ChatRequest):
         logger.info(f"新IP首次访问 - IP: {client_ip}, 昵称: {nickname}")
     else:
         access = ip_accesses[client_ip]
-        access.last_access = datetime.datetime.now()
-        access.count += 1
-        logger.info(f"IP访问计数更新 - IP: {client_ip}, 昵称: {nickname}, 当前计数: {access.count}")
+        access.window_count += 1  # 增加窗口计数
+        access.total_count += 1   # 增加累计计数
+        logger.info(f"IP访问计数更新 - IP: {client_ip}, 昵称: {nickname}, 窗口计数: {access.window_count}, 累计计数: {access.total_count}")
     
     # 检查IP访问次数
     if not await check_ip_limit(client_ip):
         block_time = config['security']['ip_limit']['block_time']
-        logger.warning(f"IP访问超限 - IP: {client_ip}, 昵称: {nickname}, 阻塞时间: {block_time}分钟")
+        logger.warning(f"IP访问超限 - IP: {client_ip}, 昵称: {nickname}, 窗口计数: {access.window_count}, 阻塞时间: {block_time}分钟")
         raise HTTPException(status_code=429, detail=f"请求过快，请{block_time}分钟后再试喵")
     
     # 检查输入长度
@@ -322,8 +340,8 @@ async def chat(request: Request, chat_request: ChatRequest):
         logger.warning(f"包含违禁词 - IP: {client_ip}, 昵称: {nickname}")
         raise HTTPException(status_code=400, detail="输入包含违禁词，拒绝处理喵")
     
-    # 保存IP访问记录
-    await save_ip_accesses()
+    # 保存IP统计记录
+    await save_ip_stats()
     
     logger.info(f"开始处理请求 - IP: {client_ip}, 昵称: {nickname}")
     

@@ -10,6 +10,6 @@ wheels/
 .venv
 
 # Config files
-data/
+backend/data/
 uv.lock
 package-lock.json
