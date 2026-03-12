@@ -1,6 +1,6 @@
 
 <script setup>
-import { ref } from "vue"
+import { ref, onMounted, onUnmounted } from "vue"
 import { meowQuotes } from "@/data/meowQuotes"
 
 const name = ref("")
@@ -10,6 +10,20 @@ const pic = ref("")
 const meows = ref([])
 const isLoading = ref(false)
 const aiComment = ref(null)
+
+// WebSocket相关状态
+const inUse = ref(0)
+const totalVisits = ref(0)
+const sseConnected = ref(false)
+const sseConnecting = ref(false)
+const statsCardImage = ref('/favicon.ico')
+let ws = null
+
+// API 端点配置
+const apiBaseUrl = 'calabiyau.xcnahida.cn'; // 末尾不带斜杠
+const apiGetNicknameResponse = 'https://' + apiBaseUrl + '/api/get_nickname_response';
+const apiWSGetVisitsInfo = 'ws://' + apiBaseUrl + '/api/get_visits_info';
+
 
 function spawnMeow(e) {
   const id = Date.now() + Math.random()
@@ -38,7 +52,7 @@ async function calculate(){
         isLoading.value = true;
 
         // 发送请求到后端
-        const response = await fetch('https://calabiyau.xcnahida.cn/api/get_nickname_response', {
+        const response = await fetch(apiGetNicknameResponse, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
@@ -181,6 +195,79 @@ async function calculate(){
       }, 2000)
     }
 
+    // WebSocket连接管理
+    function setupSSE() {
+      try {
+        // 设置连接中状态
+        sseConnecting.value = true
+        
+        // 关闭旧连接
+        if (ws) {
+          ws.close()
+        }
+        
+        // 创建新的WebSocket连接
+        ws = new WebSocket(apiWSGetVisitsInfo)
+        
+        // 连接成功
+        ws.onopen = () => {
+          sseConnecting.value = false
+          sseConnected.value = true
+          statsCardImage.value = '/favicon.ico'
+          console.log('WebSocket连接已建立')
+        }
+        
+        // 处理消息
+        ws.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data)
+            inUse.value = data.in_use
+            totalVisits.value = data.total_visits
+          } catch (error) {
+            console.error('WebSocket消息解析失败:', error)
+          }
+        }
+        
+        // 处理错误
+        ws.onerror = (error) => {
+          sseConnecting.value = false
+          sseConnected.value = false
+          statsCardImage.value = '/death.png'
+          console.error('WebSocket连接错误:', error)
+          // 3秒后重连
+          setTimeout(setupSSE, 3000)
+        }
+        
+        // 连接关闭
+        ws.onclose = () => {
+          sseConnecting.value = false
+          sseConnected.value = false
+          statsCardImage.value = '/death.png'
+          console.log('WebSocket连接已关闭')
+          // 3秒后重连
+          setTimeout(setupSSE, 3000)
+        }
+      } catch (error) {
+        sseConnecting.value = false
+        sseConnected.value = false
+        statsCardImage.value = '/death.png'
+        console.error('WebSocket连接失败:', error)
+        // 5秒后重连
+        setTimeout(setupSSE, 5000)
+      }
+    }
+    
+    // 组件挂载时建立WebSocket连接
+    onMounted(() => {
+      setupSSE()
+    })
+    
+    // 组件卸载时关闭WebSocket连接
+    onUnmounted(() => {
+      if (ws) {
+        ws.close()
+      }
+    })
 
 </script>
 
@@ -238,6 +325,35 @@ async function calculate(){
             <p>{{ aiComment }}</p>
           </div>
         </div>
+      </div>
+
+      <!-- 统计信息卡片 -->
+      <div class="w-full max-w-md mt-6 bg-white/80 dark:bg-gray-800/90 backdrop-blur-md rounded-3xl p-6 shadow-2xl border border-white/50 dark:border-gray-700 text-center space-y-4">
+        <div class="flex flex-col items-center space-y-3">
+          <div class="relative">
+               <img
+                :src="statsCardImage"
+                class="w-16 h-16 object-contain drop-shadow-md animate-bounce-slow"
+              />
+             <div class="absolute -top-1 -right-1 w-4 h-4 bg-pink-400 rounded-full border-2 border-white"></div>
+          </div></div>
+        <h2 class="text-xl font-bold text-[#ea580c] dark:text-[#ea580c]">
+          统计信息
+        </h2>
+
+        <div class="text-gray-700 dark:text-gray-200 space-y-2">
+          <template v-if="sseConnecting">
+            <p class="text-yellow-500 font-bold">正在连接服务喵...</p>
+          </template>
+          <template v-else-if="sseConnected">
+            <p>{{ inUse }} 人正在使用喵</p>
+            <p>累计处理了 {{ totalVisits }} 次计算请求喵</p>
+          </template>
+          <template v-else>
+            <p class="text-red-500 font-bold">无法获取统计信息喵，请稍后重试喵</p>
+          </template>
+        </div>
+
       </div>
 
       <div class="w-full max-w-md mt-6 bg-white/80 dark:bg-gray-800/90 backdrop-blur-md rounded-3xl p-6 shadow-2xl border border-white/50 dark:border-gray-700 text-center space-y-4">
